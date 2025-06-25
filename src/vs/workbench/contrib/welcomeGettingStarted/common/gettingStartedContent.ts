@@ -672,8 +672,8 @@ export const walkthroughs: GettingStartedWalkthroughContent = [
 	},
 	{
 		id: `${NEW_WELCOME_EXPERIENCE}`,
-		title: localize('gettingStarted.new.title', "Get started with VS Code"),
-		description: localize('gettingStarted.new.description', "Supercharge coding with AI"),
+		title: localize('gettingStarted.new.title', "Welcome to Robot Code+"),
+		description: localize('gettingStarted.new.description', "... software that feels like real robot..."),
 		isFeatured: false,
 		icon: setupIcon,
 		when: '!isWeb',

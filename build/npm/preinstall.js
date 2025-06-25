@@ -52,24 +52,25 @@ function hasSupportedVisualStudioVersion() {
 			availableVersions.push(version);
 			break;
 		}
-		const programFiles86Path = process.env['ProgramFiles(x86)'];
 		const programFiles64Path = process.env['ProgramFiles'];
+		const programFiles86Path = process.env['ProgramFiles(x86)'];
+		const vsTypes = ['Enterprise', 'Professional', 'Community', 'Preview', 'BuildTools'];
 
-		const vsTypes = ['Enterprise', 'Professional', 'Community', 'Preview', 'BuildTools', 'IntPreview'];
+		// Try 64-bit ProgramFiles first on 64-bit Windows
 		if (programFiles64Path) {
-			vsPath = `${programFiles64Path}/Microsoft Visual Studio/${version}`;
-			if (vsTypes.some(vsType => fs.existsSync(path.join(vsPath, vsType)))) {
-				availableVersions.push(version);
-				break;
-			}
+		let vsPath = path.join(programFiles64Path, 'Microsoft Visual Studio', version);
+		if (vsTypes.some(type => fs.existsSync(path.join(vsPath, type)))) {
+			availableVersions.push(version);
+			break;
 		}
-
+		}
+		// Then fall back to ProgramFiles(x86)
 		if (programFiles86Path) {
-			vsPath = `${programFiles86Path}/Microsoft Visual Studio/${version}`;
-			if (vsTypes.some(vsType => fs.existsSync(path.join(vsPath, vsType)))) {
-				availableVersions.push(version);
-				break;
-			}
+		let vsPath = path.join(programFiles86Path, 'Microsoft Visual Studio', version);
+		if (vsTypes.some(type => fs.existsSync(path.join(vsPath, type)))) {
+			availableVersions.push(version);
+			break;
+		}
 		}
 	}
 	return availableVersions.length;

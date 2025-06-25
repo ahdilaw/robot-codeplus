@@ -21,3 +21,5 @@ vscode.db
 product.overrides.json
 *.snap.actual
 .vscode-test
+*.lnk
+x64 Native Tools Command Prompt for VS 2022

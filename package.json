@@ -1,9 +1,10 @@
 {
-  "name": "code-oss-dev",
-  "version": "1.102.0",
+  "name": "robot-code-plus",
+  "displayName": "Robot Code+",
+  "version": "0.0.0",
   "distro": "ae33edbae267b91c1360906732e4b0eebdbff862",
   "author": {
-    "name": "Microsoft Corporation"
+    "name": "Robot Inc."
   },
   "license": "MIT",
   "main": "./out/main.js",

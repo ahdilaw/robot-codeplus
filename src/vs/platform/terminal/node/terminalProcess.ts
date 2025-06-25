@@ -162,7 +162,7 @@ export class TerminalProcess extends Disposable implements ITerminalChildProcess
 		this._properties[ProcessPropertyType.InitialCwd] = this._initialCwd;
 		this._properties[ProcessPropertyType.Cwd] = this._initialCwd;
 		const useConpty = this._options.windowsEnableConpty && process.platform === 'win32' && getWindowsBuildNumber() >= 18309;
-		const useConptyDll = useConpty && this._options.windowsUseConptyDll;
+		// const useConptyDll = useConpty && this._options.windowsUseConptyDll;
 		this._ptyOptions = {
 			name,
 			cwd,
@@ -171,7 +171,7 @@ export class TerminalProcess extends Disposable implements ITerminalChildProcess
 			cols,
 			rows,
 			useConpty,
-			useConptyDll,
+			// useConptyDll,
 			// This option will force conpty to not redraw the whole viewport on launch
 			conptyInheritCursor: useConpty && !!shellLaunchConfig.initialText
 		};
@@ -392,7 +392,7 @@ export class TerminalProcess extends Disposable implements ITerminalChildProcess
 			return;
 		}
 		// Don't throttle when using conpty.dll as it seems to have been fixed in later versions
-		if (this._ptyOptions.useConptyDll) {
+		if (this._ptyOptions.useConpty) {
 			return;
 		}
 		// Use a loop to ensure multiple calls in a single interval space out
