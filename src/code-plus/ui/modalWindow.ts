@@ -1,7 +1,10 @@
 /*---------------------------------------------------------------------------------------------
- *  Copyright (c) Microsoft Corporation. All rights reserved.
- *  Licensed under the MIT License. See License.txt in the project root for license information.
+ *  Copyright (c) Robot Inc. 2025.
  *--------------------------------------------------------------------------------------------*/
+
+import { UI_CONSTANTS } from './constants.js';
+import { EventUtils } from './utils.js';
+import { EventCallback, ModalState } from './types.js';
 
 /**
  * Represents an individual modal dialog window with drag, resize, and window controls
@@ -9,11 +12,14 @@
 export class ModalWindow {
 	private element: HTMLElement;
 	private title: string;
-	private isMinimized = false;
-	private isMaximized = false;
-	private originalSize?: { width: number; height: number; left: number; top: number };
-	private minimizeCallback?: (title: string) => void;
-	private restoreCallback?: (title: string) => void;
+	private state: ModalState = {
+		isMinimized: false,
+		isMaximized: false,
+		isActive: false,
+		zIndex: UI_CONSTANTS.Z_INDEX.MODAL_BASE
+	};
+	private minimizeCallback?: EventCallback<string>;
+	private restoreCallback?: EventCallback<string>;
 
 	constructor(
 		title: string,
@@ -73,20 +79,20 @@ export class ModalWindow {
 	 * Get the minimized state of this modal
 	 */
 	public isModalMinimized(): boolean {
-		return this.isMinimized;
+		return this.state.isMinimized;
 	}
 
 	/**
 	 * Set callback for minimize events
 	 */
-	public onMinimize(callback: (title: string) => void): void {
+	public onMinimize(callback: EventCallback<string>): void {
 		this.minimizeCallback = callback;
 	}
 
 	/**
 	 * Set callback for restore events
 	 */
-	public onRestore(callback: (title: string) => void): void {
+	public onRestore(callback: EventCallback<string>): void {
 		this.restoreCallback = callback;
 	}
 
@@ -95,7 +101,7 @@ export class ModalWindow {
 	 */
 	public minimize(): void {
 		this.element.style.display = 'none';
-		this.isMinimized = true;
+		this.state.isMinimized = true;
 
 		// Notify dock of minimization
 		if (this.minimizeCallback) {
@@ -107,9 +113,9 @@ export class ModalWindow {
 	 * Restore this modal from minimized state
 	 */
 	public restore(): void {
-		if (this.isMinimized) {
+		if (this.state.isMinimized) {
 			this.element.style.display = 'flex';
-			this.isMinimized = false;
+			this.state.isMinimized = false;
 
 			// Notify dock of restoration
 			if (this.restoreCallback) {
@@ -122,7 +128,7 @@ export class ModalWindow {
 	 * Toggle maximize state of this modal
 	 */
 	public toggleMaximize(): void {
-		if (this.isMaximized) {
+		if (this.state.isMaximized) {
 			this.restoreSize();
 		} else {
 			this.maximize();
@@ -398,10 +404,10 @@ export class ModalWindow {
 	}
 
 	private maximize(): void {
-		if (!this.isMaximized) {
+		if (!this.state.isMaximized) {
 			// Store original size
 			const rect = this.element.getBoundingClientRect();
-			this.originalSize = {
+			this.state.originalSize = {
 				width: rect.width,
 				height: rect.height,
 				left: rect.left,
@@ -413,25 +419,25 @@ export class ModalWindow {
 			this.element.style.left = '10px';
 			this.element.style.top = '10px';
 			this.element.style.borderRadius = '0';
-			this.isMaximized = true;
+			this.state.isMaximized = true;
 		}
 	}
 
 	private restoreSize(): void {
-		if (this.isMaximized && this.originalSize) {
-			this.element.style.width = `${this.originalSize.width}px`;
-			this.element.style.height = `${this.originalSize.height}px`;
-			this.element.style.left = `${this.originalSize.left}px`;
-			this.element.style.top = `${this.originalSize.top}px`;
+		if (this.state.isMaximized && this.state.originalSize) {
+			this.element.style.width = `${this.state.originalSize.width}px`;
+			this.element.style.height = `${this.state.originalSize.height}px`;
+			this.element.style.left = `${this.state.originalSize.left}px`;
+			this.element.style.top = `${this.state.originalSize.top}px`;
 			this.element.style.borderRadius = '8px';
-			this.isMaximized = false;
-			this.originalSize = undefined;
+			this.state.isMaximized = false;
+			this.state.originalSize = undefined;
 		}
 	}
 
 	private closeModal(): void {
 		// Dispatch custom event to notify modal manager
-		const closeEvent = new CustomEvent('modalClose', { detail: { modal: this } });
+		const closeEvent = EventUtils.createCustomEvent('modalClose', { modal: this });
 		this.element.dispatchEvent(closeEvent);
 	}
 }

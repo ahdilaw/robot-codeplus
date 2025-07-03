@@ -1,12 +1,14 @@
 /*---------------------------------------------------------------------------------------------
- *  Copyright (c) Microsoft Corporation. All rights reserved.
- *  Licensed under the MIT License. See License.txt in the project root for license information.
+ *  Copyright (c) Robot Inc. 2025.
  *--------------------------------------------------------------------------------------------*/
 
 import { TitleBarManager } from './titleBar.js';
 import { ModalManager } from './modalManager.js';
 import { Dock } from './dock.js';
 import { Launchpad, ModalDefinition } from './launchpad.js';
+import { UI_CONSTANTS, CSS_CLASSES } from './constants.js';
+import { DOMUtils } from './utils.js';
+import { MenuAction } from './types.js';
 
 /**
  * Manages the custom UI that replaces the default VS Code workbench UI
@@ -36,10 +38,7 @@ export class CustomUIManager {
 	}
 
 	private clearContainer(): void {
-		// Clear the container using safe DOM methods
-		while (this.mainContainer.firstChild) {
-			this.mainContainer.removeChild(this.mainContainer.firstChild);
-		}
+		DOMUtils.clearContainer(this.mainContainer);
 	}
 
 	private createLayout(): void {
@@ -64,17 +63,20 @@ export class CustomUIManager {
 	}
 
 	private createContentArea(): HTMLElement {
-		const contentArea = document.createElement('div');
-		contentArea.className = 'custom-ui-content-area'; // Add a class for easier selection
-		contentArea.style.cssText = 'height: calc(100vh - 35px); display: flex; justify-content: center; align-items: center; background: #1e1e1e; position: relative;';
+		const contentArea = DOMUtils.createElement(
+			'div',
+			CSS_CLASSES.CONTENT_AREA,
+			`height: calc(100vh - ${UI_CONSTANTS.TITLE_BAR_HEIGHT}px); display: flex; justify-content: center; align-items: center; background: ${UI_CONSTANTS.COLORS.CONTENT_BG}; position: relative;`
+		);
 
 		// Add background HELLO message (lowest z-index)
-		const backgroundHello = document.createElement('h1');
+		const backgroundHello = DOMUtils.createElement(
+			'h1',
+			undefined,
+			`color: ${UI_CONSTANTS.COLORS.BACKGROUND_HELLO}; font-family: ${UI_CONSTANTS.FONTS.FALLBACK}; font-size: 120px; margin: 0; position: absolute; z-index: ${UI_CONSTANTS.Z_INDEX.BACKGROUND}; pointer-events: none; opacity: 0.3;`
+		);
 		backgroundHello.textContent = 'HELLO WALI';
-		backgroundHello.style.cssText = 'color: #333333; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; font-size: 120px; margin: 0; position: absolute; z-index: 1; pointer-events: none; opacity: 0.3;';
 		contentArea.appendChild(backgroundHello);
-
-		// No default modals - they will be created when launched from the launchpad
 
 		return contentArea;
 	}
@@ -126,7 +128,7 @@ export class CustomUIManager {
 			const target = event.target as HTMLElement;
 
 			// Check if the click was on the background (content area) and not on a modal
-			const contentArea = this.mainContainer.querySelector('.custom-ui-content-area') as HTMLElement;
+			const contentArea = DOMUtils.getContentArea();
 			if (target === contentArea) {
 				// Reset to default branding when background is clicked
 				this.titleBarManager.resetToDefaultBranding();
@@ -198,7 +200,8 @@ export class CustomUIManager {
 	}
 
 	private handleMenuAction(menu: string, action: string): void {
-		switch (action) {
+		const menuAction = action as MenuAction;
+		switch (menuAction) {
 			case 'New Window':
 				// Show launchpad to choose which modal to create
 				this.launchpad.show();
@@ -225,36 +228,24 @@ export class CustomUIManager {
 	 * Get an appropriate icon for a modal based on its title
 	 */
 	private getModalIcon(title: string): string {
-		if (title.toLowerCase().includes('hello')) return '👋';
-		if (title.toLowerCase().includes('small')) return '🔹';
-		if (title.toLowerCase().includes('large')) return '🔷';
-		if (title.toLowerCase().includes('new')) return '✨';
-		if (title.toLowerCase().includes('settings')) return '⚙️';
-		if (title.toLowerCase().includes('file')) return '📁';
-		if (title.toLowerCase().includes('terminal')) return '💻';
-		if (title.toLowerCase().includes('calculator')) return '🧮';
-		if (title.toLowerCase().includes('text') || title.toLowerCase().includes('editor')) return '📝';
-		return '□'; // Default window icon
+		return DOMUtils.getModalIcon(title);
 	}
 
 	/**
 	 * Create a modal from a launchpad modal definition
 	 */
 	private createModalFromDefinition(modalDef: ModalDefinition): void {
-		const contentArea = this.mainContainer.querySelector('.custom-ui-content-area') as HTMLElement;
+		const contentArea = DOMUtils.getContentArea();
 		if (contentArea) {
 			// Calculate random position for new modal
-			const maxLeft = Math.max(50, window.innerWidth - modalDef.width - 50);
-			const maxTop = Math.max(50, window.innerHeight - modalDef.height - 100);
-			const left = Math.random() * maxLeft + 50;
-			const top = Math.random() * maxTop + 50;
+			const position = DOMUtils.calculateRandomModalPosition(modalDef.width, modalDef.height);
 
 			const modal = this.modalManager.createModal(
 				modalDef.title,
 				modalDef.width,
 				modalDef.height,
-				left,
-				top,
+				position.left,
+				position.top,
 				modalDef.titleBarColor
 			);
 			contentArea.appendChild(modal);

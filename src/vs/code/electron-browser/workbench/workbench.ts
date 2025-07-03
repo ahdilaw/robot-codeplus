@@ -25,240 +25,131 @@
 	function showSplash(configuration: INativeWindowConfiguration) {
 		performance.mark('code/willShowPartsSplash');
 
-		let data = configuration.partsSplash;
-		if (data) {
-			if (configuration.autoDetectHighContrast && configuration.colorScheme.highContrast) {
-				if ((configuration.colorScheme.dark && data.baseTheme !== 'hc-black') || (!configuration.colorScheme.dark && data.baseTheme !== 'hc-light')) {
-					data = undefined; // high contrast mode has been turned by the OS -> ignore stored colors and layouts
-				}
-			} else if (configuration.autoDetectColorScheme) {
-				if ((configuration.colorScheme.dark && data.baseTheme !== 'vs-dark') || (!configuration.colorScheme.dark && data.baseTheme !== 'vs')) {
-					data = undefined; // OS color scheme is tracked and has changed
-				}
-			}
-		}
-
-		// developing an extension -> ignore stored layouts
-		if (data && configuration.extensionDevelopmentPath) {
-			data.layoutInfo = undefined;
-		}
-
-		// minimal color configuration (works with or without persisted data)
-		let baseTheme;
-		let shellBackground;
-		let shellForeground;
-		if (data) {
-			baseTheme = data.baseTheme;
-			shellBackground = data.colorInfo.editorBackground;
-			shellForeground = data.colorInfo.foreground;
-		} else if (configuration.autoDetectHighContrast && configuration.colorScheme.highContrast) {
-			if (configuration.colorScheme.dark) {
-				baseTheme = 'hc-black';
-				shellBackground = '#000000';
-				shellForeground = '#FFFFFF';
-			} else {
-				baseTheme = 'hc-light';
-				shellBackground = '#FFFFFF';
-				shellForeground = '#000000';
-			}
-		} else if (configuration.autoDetectColorScheme) {
-			if (configuration.colorScheme.dark) {
-				baseTheme = 'vs-dark';
-				shellBackground = '#1E1E1E';
-				shellForeground = '#CCCCCC';
-			} else {
-				baseTheme = 'vs';
-				shellBackground = '#FFFFFF';
-				shellForeground = '#000000';
-			}
-		}
-
+		// CUSTOM: Create Apple-style startup screen with ROBOT branding
+		// Set clean white background for startup screen
 		const style = document.createElement('style');
 		style.className = 'initialShellColors';
 		window.document.head.appendChild(style);
-		style.textContent = `body {	background-color: ${shellBackground}; color: ${shellForeground}; margin: 0; padding: 0; }`;
+		style.textContent = `
+			body {
+				background-color: #FFFFFF;
+				color: #000000;
+				margin: 0;
+				padding: 0;
+				font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+				overflow: hidden;
+			}
+		`;
 
 		// set zoom level as soon as possible
+		let data = configuration.partsSplash;
 		if (typeof data?.zoomLevel === 'number' && typeof preloadGlobals?.webFrame?.setZoomLevel === 'function') {
 			preloadGlobals.webFrame.setZoomLevel(data.zoomLevel);
 		}
 
-		// restore parts if possible (we might not always store layout info)
-		if (data?.layoutInfo) {
-			const { layoutInfo, colorInfo } = data;
+		// Create the Apple-style startup screen
+		const splash = document.createElement('div');
+		splash.id = 'robot-startup-splash';
+		splash.style.cssText = `
+			position: fixed;
+			top: 0;
+			left: 0;
+			width: 100vw;
+			height: 100vh;
+			background: linear-gradient(135deg, #FFFFFF 0%, #F8F9FA 100%);
+			display: flex;
+			flex-direction: column;
+			justify-content: center;
+			align-items: center;
+			z-index: 10000;
+		`;
 
-			const splash = document.createElement('div');
-			splash.id = 'monaco-parts-splash';
-			splash.className = baseTheme ?? 'vs-dark';
+		// Create ROBOT text
+		const robotText = document.createElement('div');
+		robotText.textContent = 'ROBOT';
+		robotText.style.cssText = `
+			font-size: 72px;
+			font-weight: 300;
+			letter-spacing: 8px;
+			color: #1D1D1F;
+			margin-bottom: 60px;
+			opacity: 0;
+			animation: fadeInUp 1.2s ease-out 0.3s forwards;
+		`;
 
-			if (layoutInfo.windowBorder && colorInfo.windowBorder) {
-				const borderElement = document.createElement('div');
-				borderElement.style.position = 'absolute';
-				borderElement.style.width = 'calc(100vw - 2px)';
-				borderElement.style.height = 'calc(100vh - 2px)';
-				borderElement.style.zIndex = '1'; // allow border above other elements
-				borderElement.style.border = `1px solid var(--window-border-color)`;
-				borderElement.style.setProperty('--window-border-color', colorInfo.windowBorder);
+		// Create loading bar container
+		const loadingContainer = document.createElement('div');
+		loadingContainer.style.cssText = `
+			width: 280px;
+			height: 4px;
+			background-color: #E5E5E7;
+			border-radius: 2px;
+			overflow: hidden;
+			opacity: 0;
+			animation: fadeIn 0.8s ease-out 1.5s forwards;
+		`;
 
-				if (layoutInfo.windowBorderRadius) {
-					borderElement.style.borderRadius = layoutInfo.windowBorderRadius;
+		// Create loading bar
+		const loadingBar = document.createElement('div');
+		loadingBar.style.cssText = `
+			width: 0%;
+			height: 100%;
+			background: linear-gradient(90deg, #007AFF 0%, #34C759 50%, #007AFF 100%);
+			border-radius: 2px;
+			animation: loadProgress 2.5s ease-in-out 1.8s forwards;
+		`;
+
+		// Add animations to head
+		const animations = document.createElement('style');
+		animations.textContent = `
+			@keyframes fadeInUp {
+				from {
+					opacity: 0;
+					transform: translateY(30px);
 				}
-
-				splash.appendChild(borderElement);
+				to {
+					opacity: 1;
+					transform: translateY(0);
+				}
 			}
 
-			// ensure there is enough space
-			layoutInfo.auxiliarySideBarWidth = Math.min(layoutInfo.auxiliarySideBarWidth, window.innerWidth - (layoutInfo.activityBarWidth + layoutInfo.editorPartMinWidth + layoutInfo.sideBarWidth));
-			layoutInfo.sideBarWidth = Math.min(layoutInfo.sideBarWidth, window.innerWidth - (layoutInfo.activityBarWidth + layoutInfo.editorPartMinWidth + layoutInfo.auxiliarySideBarWidth));
-
-			// part: title
-			if (layoutInfo.titleBarHeight > 0) {
-				const titleDiv = document.createElement('div');
-				titleDiv.style.position = 'absolute';
-				titleDiv.style.width = '100%';
-				titleDiv.style.height = `${layoutInfo.titleBarHeight}px`;
-				titleDiv.style.left = '0';
-				titleDiv.style.top = '0';
-				titleDiv.style.backgroundColor = `${colorInfo.titleBarBackground}`;
-				(titleDiv.style as any)['-webkit-app-region'] = 'drag';
-				splash.appendChild(titleDiv);
-
-				if (colorInfo.titleBarBorder) {
-					const titleBorder = document.createElement('div');
-					titleBorder.style.position = 'absolute';
-					titleBorder.style.width = '100%';
-					titleBorder.style.height = '1px';
-					titleBorder.style.left = '0';
-					titleBorder.style.bottom = '0';
-					titleBorder.style.borderBottom = `1px solid ${colorInfo.titleBarBorder}`;
-					titleDiv.appendChild(titleBorder);
+			@keyframes fadeIn {
+				from {
+					opacity: 0;
+				}
+				to {
+					opacity: 1;
 				}
 			}
 
-			// part: activity bar
-			if (layoutInfo.activityBarWidth > 0) {
-				const activityDiv = document.createElement('div');
-				activityDiv.style.position = 'absolute';
-				activityDiv.style.width = `${layoutInfo.activityBarWidth}px`;
-				activityDiv.style.height = `calc(100% - ${layoutInfo.titleBarHeight + layoutInfo.statusBarHeight}px)`;
-				activityDiv.style.top = `${layoutInfo.titleBarHeight}px`;
-				if (layoutInfo.sideBarSide === 'left') {
-					activityDiv.style.left = '0';
-				} else {
-					activityDiv.style.right = '0';
-				}
-				activityDiv.style.backgroundColor = `${colorInfo.activityBarBackground}`;
-				splash.appendChild(activityDiv);
+			@keyframes loadProgress {
+				0% { width: 0%; }
+				20% { width: 30%; }
+				50% { width: 60%; }
+				80% { width: 85%; }
+				100% { width: 100%; }
+			}
+		`;
+		window.document.head.appendChild(animations);
 
-				if (colorInfo.activityBarBorder) {
-					const activityBorderDiv = document.createElement('div');
-					activityBorderDiv.style.position = 'absolute';
-					activityBorderDiv.style.width = '1px';
-					activityBorderDiv.style.height = '100%';
-					activityBorderDiv.style.top = '0';
-					if (layoutInfo.sideBarSide === 'left') {
-						activityBorderDiv.style.right = '0';
-						activityBorderDiv.style.borderRight = `1px solid ${colorInfo.activityBarBorder}`;
-					} else {
-						activityBorderDiv.style.left = '0';
-						activityBorderDiv.style.borderLeft = `1px solid ${colorInfo.activityBarBorder}`;
+		// Assemble the splash screen
+		loadingContainer.appendChild(loadingBar);
+		splash.appendChild(robotText);
+		splash.appendChild(loadingContainer);
+		window.document.body.appendChild(splash);
+
+		// Auto-remove splash screen after loading completes
+		setTimeout(() => {
+			if (splash.parentNode) {
+				splash.style.opacity = '0';
+				splash.style.transition = 'opacity 0.5s ease-out';
+				setTimeout(() => {
+					if (splash.parentNode) {
+						splash.parentNode.removeChild(splash);
 					}
-					activityDiv.appendChild(activityBorderDiv);
-				}
+				}, 500);
 			}
-
-			// part: side bar
-			if (layoutInfo.sideBarWidth > 0) {
-				const sideDiv = document.createElement('div');
-				sideDiv.style.position = 'absolute';
-				sideDiv.style.width = `${layoutInfo.sideBarWidth}px`;
-				sideDiv.style.height = `calc(100% - ${layoutInfo.titleBarHeight + layoutInfo.statusBarHeight}px)`;
-				sideDiv.style.top = `${layoutInfo.titleBarHeight}px`;
-				if (layoutInfo.sideBarSide === 'left') {
-					sideDiv.style.left = `${layoutInfo.activityBarWidth}px`;
-				} else {
-					sideDiv.style.right = `${layoutInfo.activityBarWidth}px`;
-				}
-				sideDiv.style.backgroundColor = `${colorInfo.sideBarBackground}`;
-				splash.appendChild(sideDiv);
-
-				if (colorInfo.sideBarBorder) {
-					const sideBorderDiv = document.createElement('div');
-					sideBorderDiv.style.position = 'absolute';
-					sideBorderDiv.style.width = '1px';
-					sideBorderDiv.style.height = '100%';
-					sideBorderDiv.style.top = '0';
-					sideBorderDiv.style.right = '0';
-					if (layoutInfo.sideBarSide === 'left') {
-						sideBorderDiv.style.borderRight = `1px solid ${colorInfo.sideBarBorder}`;
-					} else {
-						sideBorderDiv.style.left = '0';
-						sideBorderDiv.style.borderLeft = `1px solid ${colorInfo.sideBarBorder}`;
-					}
-					sideDiv.appendChild(sideBorderDiv);
-				}
-			}
-
-			// part: auxiliary sidebar
-			if (layoutInfo.auxiliarySideBarWidth > 0) {
-				const auxSideDiv = document.createElement('div');
-				auxSideDiv.style.position = 'absolute';
-				auxSideDiv.style.width = `${layoutInfo.auxiliarySideBarWidth}px`;
-				auxSideDiv.style.height = `calc(100% - ${layoutInfo.titleBarHeight + layoutInfo.statusBarHeight}px)`;
-				auxSideDiv.style.top = `${layoutInfo.titleBarHeight}px`;
-				if (layoutInfo.sideBarSide === 'left') {
-					auxSideDiv.style.right = '0';
-				} else {
-					auxSideDiv.style.left = '0';
-				}
-				auxSideDiv.style.backgroundColor = `${colorInfo.sideBarBackground}`;
-				splash.appendChild(auxSideDiv);
-
-				if (colorInfo.sideBarBorder) {
-					const auxSideBorderDiv = document.createElement('div');
-					auxSideBorderDiv.style.position = 'absolute';
-					auxSideBorderDiv.style.width = '1px';
-					auxSideBorderDiv.style.height = '100%';
-					auxSideBorderDiv.style.top = '0';
-					if (layoutInfo.sideBarSide === 'left') {
-						auxSideBorderDiv.style.left = '0';
-						auxSideBorderDiv.style.borderLeft = `1px solid ${colorInfo.sideBarBorder}`;
-					} else {
-						auxSideBorderDiv.style.right = '0';
-						auxSideBorderDiv.style.borderRight = `1px solid ${colorInfo.sideBarBorder}`;
-					}
-					auxSideDiv.appendChild(auxSideBorderDiv);
-				}
-			}
-
-			// part: statusbar
-			if (layoutInfo.statusBarHeight > 0) {
-				const statusDiv = document.createElement('div');
-				statusDiv.style.position = 'absolute';
-				statusDiv.style.width = '100%';
-				statusDiv.style.height = `${layoutInfo.statusBarHeight}px`;
-				statusDiv.style.bottom = '0';
-				statusDiv.style.left = '0';
-				if (configuration.workspace && colorInfo.statusBarBackground) {
-					statusDiv.style.backgroundColor = colorInfo.statusBarBackground;
-				} else if (!configuration.workspace && colorInfo.statusBarNoFolderBackground) {
-					statusDiv.style.backgroundColor = colorInfo.statusBarNoFolderBackground;
-				}
-				splash.appendChild(statusDiv);
-
-				if (colorInfo.statusBarBorder) {
-					const statusBorderDiv = document.createElement('div');
-					statusBorderDiv.style.position = 'absolute';
-					statusBorderDiv.style.width = '100%';
-					statusBorderDiv.style.height = '1px';
-					statusBorderDiv.style.top = '0';
-					statusBorderDiv.style.borderTop = `1px solid ${colorInfo.statusBarBorder}`;
-					statusDiv.appendChild(statusBorderDiv);
-				}
-			}
-
-			window.document.body.appendChild(splash);
-		}
+		}, 4500); // Remove after 4.5 seconds total
 
 		performance.mark('code/didShowPartsSplash');
 	}

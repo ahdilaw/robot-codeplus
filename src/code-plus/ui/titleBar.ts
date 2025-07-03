@@ -1,76 +1,149 @@
 /*---------------------------------------------------------------------------------------------
- *  Copyright (c) Microsoft Corporation. All rights reserved.
- *  Licensed under the MIT License. See License.txt in the project root for license information.
+ *  Copyright (c) Robot Inc. 2025.
  *--------------------------------------------------------------------------------------------*/
+
+import { UI_CONSTANTS, CSS_CLASSES } from './constants.js';
+import { DOMUtils, EventUtils } from './utils.js';
+import { EventCallback, MenuAction } from './types.js';
 
 /**
  * Manages the custom title bar with drag region and macOS-style menus
  */
 export class TitleBarManager {
-	private menuActionCallback?: (menu: string, action: string) => void;
+	private menuActionCallback?: EventCallback<{ menu: string; action: MenuAction }>;
 	private activeModalTitle = '';
 	private modalTabsContainer?: HTMLElement;
 	private brandingElement?: HTMLElement;
+	private windowControls?: HTMLElement;
+	private titleBarElement?: HTMLElement;
+
+	private readonly updateModalTabsDebounced = EventUtils.debounce(
+		() => this.updateModalTabs(),
+		10
+	);
 
 	/**
 	 * Create the title bar with drag region and menus
 	 */
 	public createTitleBar(): HTMLElement {
-		const titleBar = document.createElement('div');
-		titleBar.className = 'part titlebar';
-		titleBar.style.cssText = 'height: 35px; background: #323233; border-bottom: 1px solid #2e2e30; position: relative; z-index: 1000;';
-
-		const titleBarContainer = document.createElement('div');
-		titleBarContainer.className = 'titlebar-container';
-		titleBarContainer.style.cssText = 'height: 100%; width: 100%; position: relative;';
+		this.titleBarElement = DOMUtils.createElement(
+			'div',
+			`part titlebar ${CSS_CLASSES.TITLE_BAR}`,
+			`height: ${UI_CONSTANTS.TITLE_BAR_HEIGHT}px; background: ${UI_CONSTANTS.COLORS.TITLE_BAR_BG}; backdrop-filter: blur(20px); border-bottom: 1px solid rgba(0, 0, 0, 0.1); position: relative; z-index: ${UI_CONSTANTS.Z_INDEX.TITLE_BAR}; display: flex; align-items: center; justify-content: center;`
+		);
 
 		// Create drag region
-		const dragRegion = document.createElement('div');
-		dragRegion.className = 'titlebar-drag-region';
-		dragRegion.style.cssText = 'position: absolute; top: 0; left: 0; width: 100%; height: 100%; -webkit-app-region: drag;';
+		const dragRegion = this.createDragRegion();
 
-		// Create branding element (leftmost, changes based on active modal)
-		this.brandingElement = document.createElement('div');
-		this.brandingElement.style.cssText = 'position: absolute; left: 10px; top: 50%; transform: translateY(-50%); color: #ffffff; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; font-size: 14px; font-weight: 700; z-index: 1001; -webkit-app-region: no-drag; cursor: pointer; padding: 4px 8px; border-radius: 4px; transition: background-color 0.1s; background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.1);';
-		this.brandingElement.textContent = 'Robot Code+';
+		// Create center section with icon, branding, and menu items
+		const centerSection = this.createCenterSection();
 
-		// Add hover effect to branding
-		this.brandingElement.addEventListener('mouseenter', () => {
-			this.brandingElement!.style.backgroundColor = 'rgba(255, 255, 255, 0.1)';
+		// Create window controls
+		this.windowControls = this.createWindowControls();
+
+		// Create modal tabs container
+		this.modalTabsContainer = this.createModalTabsContainer();
+
+		this.titleBarElement.appendChild(dragRegion);
+		this.titleBarElement.appendChild(centerSection);
+		this.titleBarElement.appendChild(this.windowControls);
+		this.titleBarElement.appendChild(this.modalTabsContainer);
+
+		return this.titleBarElement;
+	}
+
+	private createDragRegion(): HTMLElement {
+		return DOMUtils.createElement(
+			'div',
+			'titlebar-drag-region',
+			'position: absolute; top: 0; left: 0; width: 100%; height: 100%; -webkit-app-region: drag;'
+		);
+	}
+
+	private createCenterSection(): HTMLElement {
+		const centerSection = DOMUtils.createElement(
+			'div',
+			undefined,
+			'display: flex; align-items: center; gap: 16px; z-index: 1001; -webkit-app-region: no-drag;'
+		);
+
+		// App icon
+		const appIcon = this.createAppIcon();
+		centerSection.appendChild(appIcon);
+
+		// Branding element
+		this.brandingElement = this.createBrandingElement();
+		centerSection.appendChild(this.brandingElement);
+
+		// Menu items
+		const menuItems = this.createMenuItems();
+		menuItems.forEach(item => centerSection.appendChild(item));
+
+		return centerSection;
+	}
+
+	private createAppIcon(): HTMLElement {
+		return DOMUtils.createButton(
+			'🤖',
+			() => {
+				this.minimizeAllModals();
+				this.resetToDefaultBranding();
+				document.dispatchEvent(EventUtils.createCustomEvent('brandingReset'));
+			},
+			'width: 20px; height: 20px; font-size: 16px; display: flex; align-items: center; justify-content: center; border-radius: 4px; background: transparent;',
+			{ background: 'rgba(0, 0, 0, 0.1)' }
+		);
+	}
+
+	private createBrandingElement(): HTMLElement {
+		const branding = DOMUtils.createElement(
+			'div',
+			undefined,
+			`color: ${UI_CONSTANTS.COLORS.TEXT_PRIMARY}; font-family: ${UI_CONSTANTS.FONTS.SYSTEM}; font-size: 15px; font-weight: 600; letter-spacing: -0.01em;`
+		);
+		branding.textContent = 'Robot Code+';
+		return branding;
+	}
+
+	private createMenuItems(): HTMLElement[] {
+		const menuItems = ['File', 'Edit', 'View', 'Window', 'Help'];
+		return menuItems.map(item =>
+			DOMUtils.createButton(
+				item,
+				() => this.menuActionCallback?.({ menu: item, action: 'clicked' as MenuAction }),
+				`color: ${UI_CONSTANTS.COLORS.TEXT_PRIMARY}; font-family: ${UI_CONSTANTS.FONTS.SYSTEM}; font-size: 14px; font-weight: 400; padding: 4px 8px; border-radius: 4px; background: transparent;`,
+				{ background: 'rgba(0, 0, 0, 0.06)' }
+			)
+		);
+	}
+
+	private createWindowControls(): HTMLElement {
+		const controls = DOMUtils.createElement(
+			'div',
+			undefined,
+			'position: absolute; right: 16px; top: 50%; transform: translateY(-50%); display: none; align-items: center; gap: 8px; z-index: 1001; -webkit-app-region: no-drag;'
+		);
+
+		const minimizeBtn = this.createWindowControl('🗕', '#ffbd2e', () => {
+			console.log('Minimize clicked');
 		});
 
-		this.brandingElement.addEventListener('mouseleave', () => {
-			this.brandingElement!.style.backgroundColor = 'rgba(255, 255, 255, 0.05)';
+		const closeBtn = this.createWindowControl('✕', '#ff5f57', () => {
+			console.log('Close clicked');
 		});
 
-		// Add click handler to branding to reset to default
-		this.brandingElement.addEventListener('click', () => {
-			this.resetToDefaultBranding();
-			// Dispatch a custom event to notify the UI manager
-			document.dispatchEvent(new CustomEvent('brandingReset'));
-		});
+		controls.appendChild(minimizeBtn);
+		controls.appendChild(closeBtn);
 
-		// Create title bar menu (shifted right to make room for branding)
-		const titleBarMenu = document.createElement('div');
-		titleBarMenu.style.cssText = 'position: absolute; left: 120px; top: 50%; transform: translateY(-50%); display: flex; gap: 15px; z-index: 1001; -webkit-app-region: no-drag;';
+		return controls;
+	}
 
-		const fileMenu = this.createTitleBarMenu('File', ['New Window', 'Close Window', 'Minimize All', 'Restore All']);
-		const windowMenu = this.createTitleBarMenu('Window', ['Bring All to Front', 'Minimize All', 'Close All']);
-
-		titleBarMenu.appendChild(fileMenu);
-		titleBarMenu.appendChild(windowMenu);
-
-		// Create modal tabs container (right side of title bar)
-		this.modalTabsContainer = document.createElement('div');
-		this.modalTabsContainer.style.cssText = 'position: absolute; right: 10px; top: 50%; transform: translateY(-50%); display: flex; gap: 5px; z-index: 1001; -webkit-app-region: no-drag;';
-
-		titleBarContainer.appendChild(dragRegion);
-		titleBarContainer.appendChild(this.brandingElement);
-		titleBarContainer.appendChild(titleBarMenu);
-		titleBarContainer.appendChild(this.modalTabsContainer);
-		titleBar.appendChild(titleBarContainer);
-
-		return titleBar;
+	private createModalTabsContainer(): HTMLElement {
+		return DOMUtils.createElement(
+			'div',
+			undefined,
+			'position: absolute; right: 16px; top: 50%; transform: translateY(-50%); display: flex; gap: 4px; z-index: 1001; -webkit-app-region: no-drag;'
+		);
 	}
 
 	/**
@@ -84,8 +157,8 @@ export class TitleBarManager {
 			this.brandingElement.textContent = modalTitle || 'Robot Code+';
 		}
 
-		// Use a slight delay to ensure DOM is updated
-		setTimeout(() => this.updateModalTabs(), 10);
+		// Use debounced update for performance
+		this.updateModalTabsDebounced();
 	}
 
 	/**
@@ -96,27 +169,40 @@ export class TitleBarManager {
 		if (this.brandingElement) {
 			this.brandingElement.textContent = 'Robot Code+';
 		}
-		setTimeout(() => this.updateModalTabs(), 10);
+		this.updateModalTabsDebounced();
 	}
 
 	/**
 	 * Set callback for menu actions
 	 */
 	public onMenuAction(callback: (menu: string, action: string) => void): void {
-		this.menuActionCallback = callback;
+		this.menuActionCallback = (data) => callback(data.menu, data.action);
+	}
+
+	/**
+	 * Set the maximized state and update title bar accordingly
+	 */
+	public setMaximizedState(maximized: boolean): void {
+		// Update window controls and modal tabs display based on maximized state
+		if (this.windowControls && this.modalTabsContainer) {
+			if (maximized) {
+				this.windowControls.style.display = 'flex';
+				this.modalTabsContainer.style.display = 'none';
+			} else {
+				this.windowControls.style.display = 'none';
+				this.modalTabsContainer.style.display = 'flex';
+			}
+		}
 	}
 
 	private updateModalTabs(): void {
 		if (!this.modalTabsContainer) return;
 
 		// Clear existing tabs
-		while (this.modalTabsContainer.firstChild) {
-			this.modalTabsContainer.removeChild(this.modalTabsContainer.firstChild);
-		}
+		DOMUtils.clearContainer(this.modalTabsContainer);
 
-		// Get all modals from the content area
-		const contentArea = document.querySelector('[style*="calc(100vh - 35px)"]');
-		const allModals = contentArea?.querySelectorAll('[data-dialog-title]') as NodeListOf<HTMLElement>;
+		// Get all modals
+		const allModals = DOMUtils.getAllModals();
 
 		if (!allModals || allModals.length === 0) return;
 
@@ -124,163 +210,189 @@ export class TitleBarManager {
 		allModals.forEach(modal => {
 			const modalTitle = modal.getAttribute('data-dialog-title') || 'Unknown';
 			const isActive = modal.getAttribute('data-active') === 'true' || modalTitle === this.activeModalTitle;
+			const isMinimized = modal.style.display === 'none';
 
-			const tab = this.createModalTab(modalTitle, isActive);
+			const tab = this.createModalTab(modalTitle, isActive, isMinimized);
 			this.modalTabsContainer!.appendChild(tab);
 		});
 	}
 
-	private createModalTab(title: string, isActive: boolean): HTMLElement {
-		const tab = document.createElement('div');
-		tab.style.cssText = `
-			padding: 4px 12px;
-			background: ${isActive ? '#007acc' : 'rgba(255, 255, 255, 0.1)'};
-			color: #cccccc;
-			font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-			font-size: 12px;
-			border-radius: 4px;
-			cursor: pointer;
-			transition: background-color 0.1s;
-			max-width: 120px;
-			overflow: hidden;
-			text-overflow: ellipsis;
-			white-space: nowrap;
-		`;
+	private createModalTab(title: string, isActive: boolean, isMinimized: boolean = false): HTMLElement {
+		const backgroundColor = isActive ? 'rgba(0, 122, 255, 0.1)' : isMinimized ? 'rgba(0, 0, 0, 0.05)' : 'transparent';
+		const textColor = isActive ? UI_CONSTANTS.COLORS.ACCENT_BLUE : isMinimized ? UI_CONSTANTS.COLORS.TEXT_SECONDARY : UI_CONSTANTS.COLORS.TEXT_PRIMARY;
+		const borderColor = isActive ? 'rgba(0, 122, 255, 0.3)' : isMinimized ? 'rgba(0, 0, 0, 0.2)' : 'transparent';
+		const borderStyle = isMinimized ? 'dashed' : 'solid';
+
+		const tab = DOMUtils.createElement(
+			'div',
+			CSS_CLASSES.MODAL_TAB,
+			`
+				padding: 6px 12px;
+				background: ${backgroundColor};
+				color: ${textColor};
+				font-family: ${UI_CONSTANTS.FONTS.SYSTEM};
+				font-size: 13px;
+				font-weight: ${isActive ? '500' : '400'};
+				border-radius: 6px;
+				cursor: pointer;
+				transition: all ${UI_CONSTANTS.ANIMATION.FAST}ms ease;
+				max-width: 120px;
+				overflow: hidden;
+				text-overflow: ellipsis;
+				white-space: nowrap;
+				border: 1px ${borderStyle} ${borderColor};
+				opacity: ${isMinimized ? '0.7' : '1'};
+			`
+		);
 
 		tab.textContent = title;
 
+		// Add hover effects
+		const hoverBg = isMinimized ? 'rgba(0, 0, 0, 0.1)' : 'rgba(0, 0, 0, 0.06)';
+		const normalBg = isMinimized ? 'rgba(0, 0, 0, 0.05)' : 'transparent';
+
 		tab.addEventListener('mouseenter', () => {
-			if (!isActive) {
-				tab.style.backgroundColor = 'rgba(255, 255, 255, 0.2)';
-			}
+			if (!isActive) tab.style.backgroundColor = hoverBg;
 		});
 
 		tab.addEventListener('mouseleave', () => {
-			if (!isActive) {
-				tab.style.backgroundColor = 'rgba(255, 255, 255, 0.1)';
-			}
+			if (!isActive) tab.style.backgroundColor = normalBg;
 		});
 
 		tab.addEventListener('click', () => {
-			this.selectModalByTitle(title);
+			if (isMinimized) {
+				this.restoreModalFromDock(title);
+			} else {
+				this.selectModalByTitle(title);
+			}
 		});
 
 		return tab;
 	}
 
 	private selectModalByTitle(title: string): void {
-		const contentArea = document.querySelector('[style*="calc(100vh - 35px)"]');
-		const targetModal = contentArea?.querySelector(`[data-dialog-title="${title}"]`) as HTMLElement;
-
+		const targetModal = DOMUtils.getModalByTitle(title);
 		if (targetModal) {
 			// Trigger the modal's selection logic
 			targetModal.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
 		}
 	}
 
-	private createTitleBarMenu(title: string, items: string[]): HTMLElement {
-		const menuContainer = document.createElement('div');
-		menuContainer.style.cssText = 'position: relative; display: inline-block; -webkit-app-region: no-drag;';
-
-		const menuButton = document.createElement('button');
-		menuButton.textContent = title;
-		menuButton.style.cssText = `
-			background: transparent;
-			border: none;
-			color: #cccccc;
-			font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-			font-size: 13px;
-			padding: 6px 12px;
-			cursor: pointer;
-			border-radius: 4px;
-			transition: background-color 0.1s;
-			-webkit-app-region: no-drag;
-			outline: none;
-		`;
-
-		const dropdown = document.createElement('div');
-		dropdown.style.cssText = `
-			position: absolute;
-			top: calc(100% + 2px);
-			left: 0;
-			background: #2d2d30;
-			border: 1px solid #3e3e42;
-			border-radius: 6px;
-			min-width: 160px;
-			box-shadow: 0 8px 16px rgba(0, 0, 0, 0.4);
-			display: none;
-			z-index: 10000;
-			-webkit-app-region: no-drag;
-		`;
-
-		items.forEach(item => {
-			const menuItem = document.createElement('div');
-			menuItem.textContent = item;
-			menuItem.style.cssText = `
-				padding: 10px 16px;
-				color: #cccccc;
-				font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-				font-size: 13px;
+	/**
+	 * Create a window control button (minimize/close)
+	 */
+	private createWindowControl(symbol: string, color: string, onClick: () => void): HTMLElement {
+		const button = DOMUtils.createElement(
+			'div',
+			undefined,
+			`
+				width: 12px;
+				height: 12px;
+				border-radius: 50%;
+				background: ${color};
+				display: flex;
+				align-items: center;
+				justify-content: center;
 				cursor: pointer;
-				transition: background-color 0.15s ease;
-				-webkit-app-region: no-drag;
-				user-select: none;
-			`;
+				font-size: 8px;
+				color: transparent;
+				transition: color ${UI_CONSTANTS.ANIMATION.FAST}ms;
+			`
+		);
 
-			menuItem.addEventListener('mouseenter', () => {
-				menuItem.style.backgroundColor = '#007acc';
-			});
+		button.textContent = symbol;
 
-			menuItem.addEventListener('mouseleave', () => {
-				menuItem.style.backgroundColor = 'transparent';
-			});
-
-			menuItem.addEventListener('click', (e) => {
-				e.stopPropagation();
-				if (this.menuActionCallback) {
-					this.menuActionCallback(title, item);
-				}
-				dropdown.style.display = 'none';
-			});
-
-			dropdown.appendChild(menuItem);
+		button.addEventListener('mouseenter', () => {
+			button.style.color = 'rgba(0, 0, 0, 0.6)';
 		});
 
-		menuButton.addEventListener('mouseenter', () => {
-			menuButton.style.backgroundColor = 'rgba(255, 255, 255, 0.15)';
+		button.addEventListener('mouseleave', () => {
+			button.style.color = 'transparent';
 		});
 
-		menuButton.addEventListener('mouseleave', () => {
-			menuButton.style.backgroundColor = 'transparent';
-		});
-
-		menuButton.addEventListener('click', (e) => {
+		button.addEventListener('click', (e) => {
 			e.stopPropagation();
-			const isVisible = dropdown.style.display === 'block';
-
-			// Close all other dropdowns first
-			document.querySelectorAll('[style*="z-index: 10000"]').forEach(el => {
-				if (el !== dropdown) {
-					(el as HTMLElement).style.display = 'none';
-				}
-			});
-
-			dropdown.style.display = isVisible ? 'none' : 'block';
+			onClick();
 		});
 
-		// Close dropdown when clicking outside
-		const closeDropdown = (e: Event) => {
-			if (!menuContainer.contains(e.target as Node)) {
-				dropdown.style.display = 'none';
-			}
-		};
+		return button;
+	}
 
-		document.addEventListener('click', closeDropdown);
-		document.addEventListener('mousedown', closeDropdown);
+	/**
+	 * Minimize all open modals and reset to background
+	 */
+	private minimizeAllModals(): void {
+		const allModals = DOMUtils.getAllModals();
 
-		menuContainer.appendChild(menuButton);
-		menuContainer.appendChild(dropdown);
+		if (allModals) {
+			allModals.forEach(modal => this.minimizeModalToDock(modal));
+		}
 
-		return menuContainer;
+		// Clear any active modal state
+		this.activeModalTitle = '';
+
+		// Update the modal tabs
+		this.updateModalTabsDebounced();
+	}
+
+	/**
+	 * Minimize a single modal to dock with animation
+	 */
+	private minimizeModalToDock(modal: HTMLElement): void {
+		// Set modal as inactive
+		modal.setAttribute('data-active', 'false');
+
+		// Animate to dock
+		DOMUtils.animate(
+			modal,
+			{
+				transform: 'scale(0.1) translateY(50vh)',
+				opacity: '0'
+			},
+			UI_CONSTANTS.ANIMATION.MODAL_MINIMIZE
+		).then(() => {
+			modal.style.display = 'none';
+			modal.style.transform = '';
+			modal.style.opacity = '';
+		});
+
+		// Dispatch event
+		modal.dispatchEvent(EventUtils.createCustomEvent('modalMinimized', {
+			modalTitle: modal.getAttribute('data-dialog-title')
+		}));
+	}
+
+	/**
+	 * Restore a minimized modal from dock
+	 */
+	public restoreModalFromDock(modalTitle: string): void {
+		const targetModal = DOMUtils.getModalByTitle(modalTitle);
+
+		if (targetModal && targetModal.style.display === 'none') {
+			// Show and animate modal
+			targetModal.style.display = 'block';
+			targetModal.style.transform = 'scale(0.1) translateY(50vh)';
+			targetModal.style.opacity = '0';
+
+			// Animate to normal state
+			DOMUtils.animate(
+				targetModal,
+				{
+					transform: 'scale(1) translateY(0)',
+					opacity: '1'
+				},
+				UI_CONSTANTS.ANIMATION.MODAL_MINIMIZE
+			).then(() => {
+				targetModal.style.transform = '';
+				targetModal.style.opacity = '';
+				targetModal.setAttribute('data-active', 'true');
+				this.updateActiveModal(modalTitle);
+			});
+
+			// Dispatch event
+			targetModal.dispatchEvent(EventUtils.createCustomEvent('modalRestored', {
+				modalTitle
+			}));
+		}
 	}
 }
