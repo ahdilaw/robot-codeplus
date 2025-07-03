@@ -7,15 +7,15 @@ import './style.js';
 import { runWhenWindowIdle } from '../../base/browser/dom.js';
 import { Event, Emitter, setGlobalLeakWarningThreshold } from '../../base/common/event.js';
 import { RunOnceScheduler, timeout } from '../../base/common/async.js';
-import { isFirefox, isSafari, isChrome } from '../../base/browser/browser.js';
+import { isChrome, isFirefox, isSafari } from '../../base/browser/browser.js';
 import { mark } from '../../base/common/performance.js';
 import { onUnexpectedError, setUnexpectedErrorHandler } from '../../base/common/errors.js';
 import { Registry } from '../../platform/registry/common/platform.js';
-import { isWindows, isLinux, isWeb, isNative, isMacintosh } from '../../base/common/platform.js';
+import { isWindows, isLinux, isNative, isMacintosh, isWeb } from '../../base/common/platform.js';
 import { IWorkbenchContributionsRegistry, Extensions as WorkbenchExtensions } from '../common/contributions.js';
 import { IEditorFactoryRegistry, EditorExtensions } from '../common/editor.js';
 import { getSingletonServiceDescriptors } from '../../platform/instantiation/common/extensions.js';
-import { Position, Parts, IWorkbenchLayoutService, positionToString } from '../services/layout/browser/layoutService.js';
+import { IWorkbenchLayoutService } from '../services/layout/browser/layoutService.js';
 import { IStorageService, WillSaveStateReason, StorageScope, StorageTarget } from '../../platform/storage/common/storage.js';
 import { IConfigurationChangeEvent, IConfigurationService } from '../../platform/configuration/common/configuration.js';
 import { IInstantiationService } from '../../platform/instantiation/common/instantiation.js';
@@ -29,6 +29,8 @@ import { NotificationsStatus } from './parts/notifications/notificationsStatus.j
 import { registerNotificationCommands } from './parts/notifications/notificationsCommands.js';
 import { NotificationsToasts } from './parts/notifications/notificationsToasts.js';
 import { setARIAContainer } from '../../base/browser/ui/aria/aria.js';
+import { setProgressAcccessibilitySignalScheduler } from '../../base/browser/ui/progressbar/progressAccessibilitySignal.js';
+import { AccessibilityProgressSignalScheduler } from '../../platform/accessibilitySignal/browser/progressAccessibilitySignalScheduler.js';
 import { FontMeasurements } from '../../editor/browser/config/fontMeasurements.js';
 import { BareFontInfo } from '../../editor/common/config/fontInfo.js';
 import { ILogService } from '../../platform/log/common/log.js';
@@ -44,10 +46,9 @@ import { PixelRatio } from '../../base/browser/pixelRatio.js';
 import { IHoverService, WorkbenchHoverDelegate } from '../../platform/hover/browser/hover.js';
 import { setHoverDelegateFactory } from '../../base/browser/ui/hover/hoverDelegateFactory.js';
 import { setBaseLayerHoverDelegate } from '../../base/browser/ui/hover/hoverDelegate2.js';
-import { AccessibilityProgressSignalScheduler } from '../../platform/accessibilitySignal/browser/progressAccessibilitySignalScheduler.js';
-import { setProgressAcccessibilitySignalScheduler } from '../../base/browser/ui/progressbar/progressAccessibilitySignal.js';
 import { AccessibleViewRegistry } from '../../platform/accessibility/browser/accessibleViewRegistry.js';
 import { NotificationAccessibleView } from './parts/notifications/notificationAccessibleView.js';
+import { CustomUIManager } from '../../../code-plus/ui/customUIManager.js';
 
 export interface IWorkbenchOptions {
 
@@ -64,6 +65,9 @@ export class Workbench extends Layout {
 
 	private readonly _onDidShutdown = this._register(new Emitter<void>());
 	readonly onDidShutdown = this._onDidShutdown.event;
+
+	// CUSTOM: Fork-specific UI manager
+	private customUIManager?: CustomUIManager;
 
 	constructor(
 		parent: HTMLElement,
@@ -326,41 +330,27 @@ export class Workbench extends Layout {
 		// Warm up font cache information before building up too many dom elements
 		this.restoreFontInfo(storageService, configurationService);
 
-		// Create Parts
-		for (const { id, role, classes, options } of [
-			{ id: Parts.TITLEBAR_PART, role: 'none', classes: ['titlebar'] },
-			{ id: Parts.BANNER_PART, role: 'banner', classes: ['banner'] },
-			{ id: Parts.ACTIVITYBAR_PART, role: 'none', classes: ['activitybar', this.getSideBarPosition() === Position.LEFT ? 'left' : 'right'] }, // Use role 'none' for some parts to make screen readers less chatty #114892
-			{ id: Parts.SIDEBAR_PART, role: 'none', classes: ['sidebar', this.getSideBarPosition() === Position.LEFT ? 'left' : 'right'] },
-			{ id: Parts.EDITOR_PART, role: 'main', classes: ['editor'], options: { restorePreviousState: this.willRestoreEditors() } },
-			{ id: Parts.PANEL_PART, role: 'none', classes: ['panel', 'basepanel', positionToString(this.getPanelPosition())] },
-			{ id: Parts.AUXILIARYBAR_PART, role: 'none', classes: ['auxiliarybar', 'basepanel', this.getSideBarPosition() === Position.LEFT ? 'right' : 'left'] },
-			{ id: Parts.STATUSBAR_PART, role: 'status', classes: ['statusbar'] }
-		]) {
-			const partContainer = this.createPart(id, role, classes);
-
-			mark(`code/willCreatePart/${id}`);
-			this.getPart(id).create(partContainer, options);
-			mark(`code/didCreatePart/${id}`);
-		}
+		// CUSTOM: Skip creating default workbench parts and use custom UI instead
+		// Create Parts - DISABLED for custom UI
+		// for (const { id, role, classes, options } of [
+		//     { id: Parts.TITLEBAR_PART, role: 'none', classes: ['titlebar'] },
+		//     ... (other parts)
+		// ]) {
+		//     const partContainer = this.createPart(id, role, classes);
+		//     mark(`code/willCreatePart/${id}`);
+		//     this.getPart(id).create(partContainer, options);
+		//     mark(`code/didCreatePart/${id}`);
+		// }
 
 		// Notification Handlers
 		this.createNotificationsHandlers(instantiationService, notificationService);
 
+		// CUSTOM: Initialize custom UI manager instead of default workbench UI
+		this.customUIManager = new CustomUIManager(this.mainContainer);
+		this.customUIManager.initialize();
+
 		// Add Workbench to DOM
 		this.parent.appendChild(this.mainContainer);
-	}
-
-	private createPart(id: string, role: string, classes: string[]): HTMLElement {
-		const part = document.createElement(role === 'status' ? 'footer' /* Use footer element for status bar #98376 */ : 'div');
-		part.classList.add('part', ...classes);
-		part.id = id;
-		part.setAttribute('role', role);
-		if (role === 'status') {
-			part.setAttribute('aria-live', 'off');
-		}
-
-		return part;
 	}
 
 	private createNotificationsHandlers(instantiationService: IInstantiationService, notificationService: NotificationService): void {
@@ -442,5 +432,21 @@ export class Workbench extends Layout {
 				eventuallyPhaseScheduler.schedule();
 			})
 		);
+	}
+
+	protected override createWorkbenchLayout(): void {
+		// Skip workbench grid layout creation since we're replacing the UI with custom content
+		// All services are still running, but we don't need the complex grid layout
+	}
+
+	override layout(): void {
+		// CUSTOM: Delegate layout to custom UI manager
+		if (this.customUIManager) {
+			this.customUIManager.updateLayout();
+		} else {
+			// Fallback: ensure container takes full space
+			this.mainContainer.style.width = '100%';
+			this.mainContainer.style.height = '100%';
+		}
 	}
 }

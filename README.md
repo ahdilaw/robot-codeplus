@@ -60,4 +60,3 @@
 	! IT TAKES A LOT OF RAM, SO USE CAREFULLY.
 13. If for any reason the base product.json is changed, name changed or etc, rebuild gulp using:
 	> npm run gulp vscode-win32-x64
- 
