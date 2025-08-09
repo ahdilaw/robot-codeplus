@@ -11,16 +11,10 @@ import { EventCallback, MenuAction } from './types.js';
  */
 export class TitleBarManager {
 	private menuActionCallback?: EventCallback<{ menu: string; action: MenuAction }>;
-	private activeModalTitle = '';
 	private modalTabsContainer?: HTMLElement;
 	private brandingElement?: HTMLElement;
 	private windowControls?: HTMLElement;
 	private titleBarElement?: HTMLElement;
-
-	private readonly updateModalTabsDebounced = EventUtils.debounce(
-		() => this.updateModalTabs(),
-		10
-	);
 
 	/**
 	 * Create the title bar with drag region and menus
@@ -86,7 +80,8 @@ export class TitleBarManager {
 		return DOMUtils.createButton(
 			'🤖',
 			() => {
-				this.minimizeAllModals();
+				// Dispatch event to let CustomUIManager handle this properly
+				document.dispatchEvent(EventUtils.createCustomEvent('minimizeAllModals'));
 				this.resetToDefaultBranding();
 				document.dispatchEvent(EventUtils.createCustomEvent('brandingReset'));
 			},
@@ -150,26 +145,19 @@ export class TitleBarManager {
 	 * Update the active modal and refresh title bar tabs
 	 */
 	public updateActiveModal(modalTitle: string): void {
-		this.activeModalTitle = modalTitle;
-
 		// Update branding text to show the active modal title
 		if (this.brandingElement) {
 			this.brandingElement.textContent = modalTitle || 'Robot Code+';
 		}
-
-		// Use debounced update for performance
-		this.updateModalTabsDebounced();
 	}
 
 	/**
 	 * Reset branding to default when no modal is selected (background clicked)
 	 */
 	public resetToDefaultBranding(): void {
-		this.activeModalTitle = '';
 		if (this.brandingElement) {
 			this.brandingElement.textContent = 'Robot Code+';
 		}
-		this.updateModalTabsDebounced();
 	}
 
 	/**
@@ -192,89 +180,6 @@ export class TitleBarManager {
 				this.windowControls.style.display = 'none';
 				this.modalTabsContainer.style.display = 'flex';
 			}
-		}
-	}
-
-	private updateModalTabs(): void {
-		if (!this.modalTabsContainer) return;
-
-		// Clear existing tabs
-		DOMUtils.clearContainer(this.modalTabsContainer);
-
-		// Get all modals
-		const allModals = DOMUtils.getAllModals();
-
-		if (!allModals || allModals.length === 0) return;
-
-		// Create tabs for each modal
-		allModals.forEach(modal => {
-			const modalTitle = modal.getAttribute('data-dialog-title') || 'Unknown';
-			const isActive = modal.getAttribute('data-active') === 'true' || modalTitle === this.activeModalTitle;
-			const isMinimized = modal.style.display === 'none';
-
-			const tab = this.createModalTab(modalTitle, isActive, isMinimized);
-			this.modalTabsContainer!.appendChild(tab);
-		});
-	}
-
-	private createModalTab(title: string, isActive: boolean, isMinimized: boolean = false): HTMLElement {
-		const backgroundColor = isActive ? 'rgba(0, 122, 255, 0.1)' : isMinimized ? 'rgba(0, 0, 0, 0.05)' : 'transparent';
-		const textColor = isActive ? UI_CONSTANTS.COLORS.ACCENT_BLUE : isMinimized ? UI_CONSTANTS.COLORS.TEXT_SECONDARY : UI_CONSTANTS.COLORS.TEXT_PRIMARY;
-		const borderColor = isActive ? 'rgba(0, 122, 255, 0.3)' : isMinimized ? 'rgba(0, 0, 0, 0.2)' : 'transparent';
-		const borderStyle = isMinimized ? 'dashed' : 'solid';
-
-		const tab = DOMUtils.createElement(
-			'div',
-			CSS_CLASSES.MODAL_TAB,
-			`
-				padding: 6px 12px;
-				background: ${backgroundColor};
-				color: ${textColor};
-				font-family: ${UI_CONSTANTS.FONTS.SYSTEM};
-				font-size: 13px;
-				font-weight: ${isActive ? '500' : '400'};
-				border-radius: 6px;
-				cursor: pointer;
-				transition: all ${UI_CONSTANTS.ANIMATION.FAST}ms ease;
-				max-width: 120px;
-				overflow: hidden;
-				text-overflow: ellipsis;
-				white-space: nowrap;
-				border: 1px ${borderStyle} ${borderColor};
-				opacity: ${isMinimized ? '0.7' : '1'};
-			`
-		);
-
-		tab.textContent = title;
-
-		// Add hover effects
-		const hoverBg = isMinimized ? 'rgba(0, 0, 0, 0.1)' : 'rgba(0, 0, 0, 0.06)';
-		const normalBg = isMinimized ? 'rgba(0, 0, 0, 0.05)' : 'transparent';
-
-		tab.addEventListener('mouseenter', () => {
-			if (!isActive) tab.style.backgroundColor = hoverBg;
-		});
-
-		tab.addEventListener('mouseleave', () => {
-			if (!isActive) tab.style.backgroundColor = normalBg;
-		});
-
-		tab.addEventListener('click', () => {
-			if (isMinimized) {
-				this.restoreModalFromDock(title);
-			} else {
-				this.selectModalByTitle(title);
-			}
-		});
-
-		return tab;
-	}
-
-	private selectModalByTitle(title: string): void {
-		const targetModal = DOMUtils.getModalByTitle(title);
-		if (targetModal) {
-			// Trigger the modal's selection logic
-			targetModal.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
 		}
 	}
 
@@ -316,50 +221,6 @@ export class TitleBarManager {
 		});
 
 		return button;
-	}
-
-	/**
-	 * Minimize all open modals and reset to background
-	 */
-	private minimizeAllModals(): void {
-		const allModals = DOMUtils.getAllModals();
-
-		if (allModals) {
-			allModals.forEach(modal => this.minimizeModalToDock(modal));
-		}
-
-		// Clear any active modal state
-		this.activeModalTitle = '';
-
-		// Update the modal tabs
-		this.updateModalTabsDebounced();
-	}
-
-	/**
-	 * Minimize a single modal to dock with animation
-	 */
-	private minimizeModalToDock(modal: HTMLElement): void {
-		// Set modal as inactive
-		modal.setAttribute('data-active', 'false');
-
-		// Animate to dock
-		DOMUtils.animate(
-			modal,
-			{
-				transform: 'scale(0.1) translateY(50vh)',
-				opacity: '0'
-			},
-			UI_CONSTANTS.ANIMATION.MODAL_MINIMIZE
-		).then(() => {
-			modal.style.display = 'none';
-			modal.style.transform = '';
-			modal.style.opacity = '';
-		});
-
-		// Dispatch event
-		modal.dispatchEvent(EventUtils.createCustomEvent('modalMinimized', {
-			modalTitle: modal.getAttribute('data-dialog-title')
-		}));
 	}
 
 	/**

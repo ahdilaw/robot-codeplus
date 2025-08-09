@@ -12,6 +12,7 @@ export interface UIEvents {
 	modalClosed: { modalTitle: string };
 	menuAction: { menu: string; action: string };
 	brandingReset: {};
+	minimizeAllModals: {};
 	launchpadToggle: {};
 	createModal: {};
 	restoreModal: { title: string };

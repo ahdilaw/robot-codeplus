@@ -2,16 +2,7 @@
  *  Copyright (c) Robot Inc. 2025.
  *--------------------------------------------------------------------------------------------*/
 
-/**
- * Represents a modal definition for the launchpad
- */
-export interface ModalDefinition {
-	title: string;
-	width: number;
-	height: number;
-	titleBarColor: string;
-	icon: string;
-}
+import { ModalTypeRegistry, IEnhancedModalDefinition } from './services/modalTypeRegistry.js';
 
 /**
  * Manages the macOS-style launchpad overlay with search functionality
@@ -21,16 +12,16 @@ export class Launchpad {
 	private searchInput: HTMLInputElement;
 	private iconsContainer: HTMLElement;
 	private isVisible = false;
-	private modalDefinitions: ModalDefinition[] = [];
-	private filteredModals: ModalDefinition[] = [];
-	private launchModalCallback?: (modalDef: ModalDefinition) => void;
+	private modalDefinitions: IEnhancedModalDefinition[] = [];
+	private filteredModals: IEnhancedModalDefinition[] = [];
+	private launchModalCallback?: (modalDef: IEnhancedModalDefinition) => void;
 
 	constructor() {
 		this.launchpadElement = this.createLaunchpadElement();
 		this.searchInput = this.launchpadElement.querySelector('.launchpad-search') as HTMLInputElement;
 		this.iconsContainer = this.launchpadElement.querySelector('.launchpad-icons') as HTMLElement;
 		this.setupEventHandlers();
-		this.initializeModalDefinitions();
+		// Don't initialize modal definitions here - wait for explicit call after registry is ready
 	}
 
 	/**
@@ -96,7 +87,7 @@ export class Launchpad {
 	/**
 	 * Set callback for launching modals
 	 */
-	public onLaunchModal(callback: (modalDef: ModalDefinition) => void): void {
+	public onLaunchModal(callback: (modalDef: IEnhancedModalDefinition) => void): void {
 		this.launchModalCallback = callback;
 	}
 
@@ -226,67 +217,25 @@ export class Launchpad {
 		});
 	}
 
-	private initializeModalDefinitions(): void {
-		this.modalDefinitions = [
-			{
-				title: 'HELLO Dialog',
-				width: 600,
-				height: 400,
-				titleBarColor: '#007acc',
-				icon: '👋'
-			},
-			{
-				title: 'Small Window',
-				width: 400,
-				height: 300,
-				titleBarColor: '#8e44ad',
-				icon: '📱'
-			},
-			{
-				title: 'Large Window',
-				width: 800,
-				height: 600,
-				titleBarColor: '#e67e22',
-				icon: '🖥️'
-			},
-			{
-				title: 'Settings',
-				width: 500,
-				height: 400,
-				titleBarColor: '#95a5a6',
-				icon: '⚙️'
-			},
-			{
-				title: 'File Manager',
-				width: 700,
-				height: 500,
-				titleBarColor: '#3498db',
-				icon: '📁'
-			},
-			{
-				title: 'Terminal',
-				width: 600,
-				height: 400,
-				titleBarColor: '#2c3e50',
-				icon: '💻'
-			},
-			{
-				title: 'Calculator',
-				width: 300,
-				height: 400,
-				titleBarColor: '#e74c3c',
-				icon: '🧮'
-			},
-			{
-				title: 'Text Editor',
-				width: 650,
-				height: 450,
-				titleBarColor: '#27ae60',
-				icon: '📝'
-			}
-		];
+	/**
+	 * Refresh modal definitions from registry (call after registry initialization)
+	 */
+	public refreshModalDefinitions(): void {
+		this.initializeModalDefinitions();
+	}
 
+	private initializeModalDefinitions(): void {
+		// Get modal definitions from the registry
+		this.modalDefinitions = ModalTypeRegistry.getAllModalDefinitions();
 		this.filteredModals = [...this.modalDefinitions];
+
+		// Debug: Log the modal definitions
+		console.log('Launchpad: Loaded modal definitions:', this.modalDefinitions.length);
+		console.log('Modal definitions:', this.modalDefinitions.map(m => m.title));
+
+		if (this.modalDefinitions.length === 0) {
+			console.warn('Launchpad: No modal definitions found! Registry may not be initialized.');
+		}
 	}
 
 	private filterModals(): void {
@@ -304,6 +253,8 @@ export class Launchpad {
 	}
 
 	private updateIcons(): void {
+		console.log('Launchpad: Updating icons for', this.filteredModals.length, 'modals');
+
 		// Clear existing icons using DOM methods instead of innerHTML
 		while (this.iconsContainer.firstChild) {
 			this.iconsContainer.removeChild(this.iconsContainer.firstChild);
@@ -311,12 +262,14 @@ export class Launchpad {
 
 		// Create icons for filtered modals
 		this.filteredModals.forEach(modal => {
+			console.log('Creating icon for:', modal.title);
 			const iconElement = this.createIconElement(modal);
 			this.iconsContainer.appendChild(iconElement);
 		});
 
 		// Add animation
 		const icons = this.iconsContainer.querySelectorAll('.launchpad-icon');
+		console.log('Added', icons.length, 'icon elements to DOM');
 		icons.forEach((icon, index) => {
 			const element = icon as HTMLElement;
 			element.style.opacity = '0';
@@ -330,7 +283,7 @@ export class Launchpad {
 		});
 	}
 
-	private createIconElement(modal: ModalDefinition): HTMLElement {
+	private createIconElement(modal: IEnhancedModalDefinition): HTMLElement {
 		const iconContainer = document.createElement('div');
 		iconContainer.className = 'launchpad-icon';
 		iconContainer.style.cssText = `

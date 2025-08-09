@@ -5,6 +5,7 @@
 import { UI_CONSTANTS } from './constants.js';
 import { EventUtils } from './utils.js';
 import { EventCallback, ModalState } from './types.js';
+import { IModalContentProvider } from './services/modalContentProvider.js';
 
 /**
  * Represents an individual modal dialog window with drag, resize, and window controls
@@ -20,6 +21,7 @@ export class ModalWindow {
 	};
 	private minimizeCallback?: EventCallback<string>;
 	private restoreCallback?: EventCallback<string>;
+	private contentProvider?: IModalContentProvider;
 
 	constructor(
 		title: string,
@@ -27,9 +29,11 @@ export class ModalWindow {
 		private height: number,
 		private left: number,
 		private top: number,
-		private titleBarColor: string
+		private titleBarColor: string,
+		contentProvider?: IModalContentProvider
 	) {
 		this.title = title;
+		this.contentProvider = contentProvider;
 		this.element = this.createModalElement();
 	}
 
@@ -73,6 +77,16 @@ export class ModalWindow {
 	 */
 	public setActive(isActive: boolean): void {
 		this.element.setAttribute('data-active', isActive.toString());
+		this.state.isActive = isActive;
+
+		// Notify content provider of activation state
+		if (this.contentProvider) {
+			if (isActive) {
+				this.contentProvider.onActivate?.();
+			} else {
+				this.contentProvider.onDeactivate?.();
+			}
+		}
 	}
 
 	/**
@@ -216,7 +230,31 @@ export class ModalWindow {
 
 	private createContentArea(): HTMLElement {
 		const dialogContent = document.createElement('div');
+		dialogContent.className = 'modal-content-area';
 		dialogContent.style.cssText = `
+			flex: 1;
+			background: #252526;
+			border-radius: 0 0 8px 8px;
+			overflow: hidden;
+			position: relative;
+		`;
+
+		if (this.contentProvider) {
+			// Use content provider for advanced modal content
+			this.contentProvider.createContent(dialogContent).catch(error => {
+				console.error('Failed to create modal content:', error);
+				this.createDefaultContent(dialogContent);
+			});
+		} else {
+			// Fallback to default content
+			this.createDefaultContent(dialogContent);
+		}
+
+		return dialogContent;
+	}
+
+	private createDefaultContent(container: HTMLElement): void {
+		container.style.cssText = `
 			flex: 1;
 			padding: 20px;
 			background: #252526;
@@ -235,10 +273,8 @@ export class ModalWindow {
 		subText.textContent = `This is a ${this.width}x${this.height} resizable dialog window!`;
 		subText.style.cssText = 'color: #cccccc; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; font-size: 16px; margin: 10px 0 0 0; text-align: center;';
 
-		dialogContent.appendChild(helloElement);
-		dialogContent.appendChild(subText);
-
-		return dialogContent;
+		container.appendChild(helloElement);
+		container.appendChild(subText);
 	}
 
 	private createWindowControlButton(symbol: string, color: string, onClick: () => void): HTMLElement {
@@ -436,8 +472,48 @@ export class ModalWindow {
 	}
 
 	private closeModal(): void {
+		// Cleanup content provider
+		if (this.contentProvider) {
+			this.contentProvider.dispose();
+		}
+
 		// Dispatch custom event to notify modal manager
 		const closeEvent = EventUtils.createCustomEvent('modalClose', { modal: this });
 		this.element.dispatchEvent(closeEvent);
+	}
+
+	/**
+	 * Handle resize events and notify content provider
+	 */
+	public handleResize(newWidth: number, newHeight: number): void {
+		this.width = newWidth;
+		this.height = newHeight;
+
+		// Notify content provider of resize
+		if (this.contentProvider && this.contentProvider.onResize) {
+			this.contentProvider.onResize(newWidth, newHeight);
+		}
+	}
+
+	/**
+	 * Focus the modal and its content
+	 */
+	public focus(): void {
+		this.element.focus();
+
+		// Notify content provider of focus
+		if (this.contentProvider && this.contentProvider.onFocus) {
+			this.contentProvider.onFocus();
+		}
+	}
+
+	/**
+	 * Blur the modal and its content
+	 */
+	public blur(): void {
+		// Notify content provider of blur
+		if (this.contentProvider && this.contentProvider.onBlur) {
+			this.contentProvider.onBlur();
+		}
 	}
 }

@@ -5,10 +5,12 @@
 import { TitleBarManager } from './titleBar.js';
 import { ModalManager } from './modalManager.js';
 import { Dock } from './dock.js';
-import { Launchpad, ModalDefinition } from './launchpad.js';
+import { Launchpad } from './launchpad.js';
+import { IEnhancedModalDefinition } from './services/modalTypeRegistry.js';
 import { UI_CONSTANTS, CSS_CLASSES } from './constants.js';
 import { DOMUtils } from './utils.js';
 import { MenuAction } from './types.js';
+import { CodePlusWorkbenchIntegration } from './codePlusIntegration.js';
 
 /**
  * Manages the custom UI that replaces the default VS Code workbench UI
@@ -19,13 +21,28 @@ export class CustomUIManager {
 	private dock: Dock;
 	private launchpad: Launchpad;
 	private mainContainer: HTMLElement;
+	private codePlusIntegration: CodePlusWorkbenchIntegration;
 
 	constructor(container: HTMLElement) {
 		this.mainContainer = container;
 		this.titleBarManager = new TitleBarManager();
-		this.modalManager = new ModalManager();
 		this.dock = new Dock();
-		this.launchpad = new Launchpad();
+
+		// Initialize Code+ integration system first to set up registries
+		// Services will be provided via the bridge once it's initialized
+		this.codePlusIntegration = this.createCodePlusIntegration();
+
+		// Get the modal manager and launchpad from the integration (which has the initialized registries)
+		this.modalManager = this.codePlusIntegration.getModalManager()!;
+		this.launchpad = this.codePlusIntegration.getLaunchpad()!;
+	}
+
+	/**
+	 * Create Code+ integration
+	 */
+	private createCodePlusIntegration(): CodePlusWorkbenchIntegration {
+		// The service bridge should already be initialized by the workbench
+		return new CodePlusWorkbenchIntegration();
 	}
 
 	/**
@@ -142,6 +159,11 @@ export class CustomUIManager {
 			this.modalManager.clearActiveModal();
 		});
 
+		// Handle minimize all modals event from title bar
+		document.addEventListener('minimizeAllModals', () => {
+			this.modalManager.minimizeAllModals();
+		});
+
 		// Set up launchpad event handlers
 		this.launchpad.onLaunchModal((modalDef) => {
 			this.createModalFromDefinition(modalDef);
@@ -234,7 +256,7 @@ export class CustomUIManager {
 	/**
 	 * Create a modal from a launchpad modal definition
 	 */
-	private createModalFromDefinition(modalDef: ModalDefinition): void {
+	private createModalFromDefinition(modalDef: IEnhancedModalDefinition): void {
 		const contentArea = DOMUtils.getContentArea();
 		if (contentArea) {
 			// Calculate random position for new modal

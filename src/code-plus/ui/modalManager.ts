@@ -3,6 +3,7 @@
  *--------------------------------------------------------------------------------------------*/
 
 import { ModalWindow } from './modalWindow.js';
+import { ModalTypeRegistry } from './services/modalTypeRegistry.js';
 
 /**
  * Manages multiple modal dialog windows with proper z-index handling
@@ -20,7 +21,10 @@ export class ModalManager {
 	 * Create a new modal dialog
 	 */
 	public createModal(title: string, width: number, height: number, left: number, top: number, titleBarColor: string): HTMLElement {
-		const modalWindow = new ModalWindow(title, width, height, left, top, titleBarColor);
+		// Get content provider for this modal type
+		const contentProvider = ModalTypeRegistry.createContentProvider(title);
+
+		const modalWindow = new ModalWindow(title, width, height, left, top, titleBarColor, contentProvider);
 		const modalElement = modalWindow.createElement();
 
 		// Set up event handlers for this modal

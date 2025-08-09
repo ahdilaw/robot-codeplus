@@ -49,19 +49,20 @@ import { setBaseLayerHoverDelegate } from '../../base/browser/ui/hover/hoverDele
 import { AccessibleViewRegistry } from '../../platform/accessibility/browser/accessibleViewRegistry.js';
 import { NotificationAccessibleView } from './parts/notifications/notificationAccessibleView.js';
 import { CustomUIManager } from '../../../code-plus/ui/customUIManager.js';
-import { CodePlusServiceBridge } from '../../../code-plus/ui/services/codePlusServiceBridge.js';
-import { IModelService } from '../../editor/common/services/model.js';
-import { ILanguageService } from '../../editor/common/languages/language.js';
-import { ICodeEditorService } from '../../editor/browser/services/codeEditorService.js';
-import { ICommandService } from '../../platform/commands/common/commands.js';
-import { IContextKeyService } from '../../platform/contextkey/common/contextkey.js';
-import { IThemeService } from '../../platform/theme/common/themeService.js';
-import { IKeybindingService } from '../../platform/keybinding/common/keybinding.js';
-import { IContextMenuService } from '../../platform/contextview/browser/contextView.js';
-import { IViewDescriptorService } from '../common/views.js';
-import { IOpenerService } from '../../platform/opener/common/opener.js';
-import { IMenuService } from '../../platform/actions/common/actions.js';
-import { IAccessibilityService } from '../../platform/accessibility/common/accessibility.js';
+import { Position, Parts, positionToString } from '../services/layout/browser/layoutService.js';
+// import { CodePlusServiceBridge } from '../../../code-plus/ui/services/codePlusServiceBridge.js';
+// import { IModelService } from '../../editor/common/services/model.js';
+// import { ILanguageService } from '../../editor/common/languages/language.js';
+// import { ICodeEditorService } from '../../editor/browser/services/codeEditorService.js';
+// import { ICommandService } from '../../platform/commands/common/commands.js';
+// import { IContextKeyService } from '../../platform/contextkey/common/contextkey.js';
+// import { IThemeService } from '../../platform/theme/common/themeService.js';
+// import { IKeybindingService } from '../../platform/keybinding/common/keybinding.js';
+// import { IContextMenuService } from '../../platform/contextview/browser/contextView.js';
+// import { IViewDescriptorService } from '../common/views.js';
+// import { IOpenerService } from '../../platform/opener/common/opener.js';
+// import { IMenuService } from '../../platform/actions/common/actions.js';
+// import { IAccessibilityService } from '../../platform/accessibility/common/accessibility.js';
 
 export interface IWorkbenchOptions {
 
@@ -343,30 +344,41 @@ export class Workbench extends Layout {
 		// Warm up font cache information before building up too many dom elements
 		this.restoreFontInfo(storageService, configurationService);
 
-		// CUSTOM: Skip creating default workbench parts and use custom UI instead
-		// Create Parts - DISABLED for custom UI
-		// for (const { id, role, classes, options } of [
-		//     { id: Parts.TITLEBAR_PART, role: 'none', classes: ['titlebar'] },
-		//     ... (other parts)
-		// ]) {
-		//     const partContainer = this.createPart(id, role, classes);
-		//     mark(`code/willCreatePart/${id}`);
-		//     this.getPart(id).create(partContainer, options);
-		//     mark(`code/didCreatePart/${id}`);
-		// }
+		// Create Parts
+		for (const { id, role, classes, options } of [
+			{ id: Parts.TITLEBAR_PART, role: 'none', classes: ['titlebar'] },
+			{ id: Parts.BANNER_PART, role: 'banner', classes: ['banner'] },
+			{ id: Parts.ACTIVITYBAR_PART, role: 'none', classes: ['activitybar', this.getSideBarPosition() === Position.LEFT ? 'left' : 'right'] }, // Use role 'none' for some parts to make screen readers less chatty #114892
+			{ id: Parts.SIDEBAR_PART, role: 'none', classes: ['sidebar', this.getSideBarPosition() === Position.LEFT ? 'left' : 'right'] },
+			{ id: Parts.EDITOR_PART, role: 'main', classes: ['editor'], options: { restorePreviousState: this.willRestoreEditors() } },
+			{ id: Parts.PANEL_PART, role: 'none', classes: ['panel', 'basepanel', positionToString(this.getPanelPosition())] },
+			{ id: Parts.AUXILIARYBAR_PART, role: 'none', classes: ['auxiliarybar', 'basepanel', this.getSideBarPosition() === Position.LEFT ? 'right' : 'left'] },
+			{ id: Parts.STATUSBAR_PART, role: 'status', classes: ['statusbar'] }
+		]) {
+			const partContainer = this.createPart(id, role, classes);
+
+			mark(`code/willCreatePart/${id}`);
+			this.getPart(id).create(partContainer, options);
+			mark(`code/didCreatePart/${id}`);
+		}
 
 		// Notification Handlers
 		this.createNotificationsHandlers(instantiationService, notificationService);
 
-		// CUSTOM: Initialize Code+ service bridge before creating custom UI manager
-		this.initializeCodePlusServiceBridge(instantiationService);
-
-		// CUSTOM: Initialize custom UI manager instead of default workbench UI
-		this.customUIManager = new CustomUIManager(this.mainContainer);
-		this.customUIManager.initialize();
-
 		// Add Workbench to DOM
 		this.parent.appendChild(this.mainContainer);
+	}
+
+	private createPart(id: string, role: string, classes: string[]): HTMLElement {
+		const part = document.createElement(role === 'status' ? 'footer' /* Use footer element for status bar #98376 */ : 'div');
+		part.classList.add('part', ...classes);
+		part.id = id;
+		part.setAttribute('role', role);
+		if (role === 'status') {
+			part.setAttribute('aria-live', 'off');
+		}
+
+		return part;
 	}
 
 	private createNotificationsHandlers(instantiationService: IInstantiationService, notificationService: NotificationService): void {
@@ -453,50 +465,50 @@ export class Workbench extends Layout {
 	/**
 	 * Initialize the Code+ service bridge with VS Code services
 	 */
-	private initializeCodePlusServiceBridge(instantiationService: IInstantiationService): void {
-		try {
-			// Get required services from the instantiation service
-			const modelService = instantiationService.invokeFunction(accessor => accessor.get(IModelService));
-			const languageService = instantiationService.invokeFunction(accessor => accessor.get(ILanguageService));
-			const codeEditorService = instantiationService.invokeFunction(accessor => accessor.get(ICodeEditorService));
-			const commandService = instantiationService.invokeFunction(accessor => accessor.get(ICommandService));
-			const contextKeyService = instantiationService.invokeFunction(accessor => accessor.get(IContextKeyService));
-			const themeService = instantiationService.invokeFunction(accessor => accessor.get(IThemeService));
-			const notificationService = instantiationService.invokeFunction(accessor => accessor.get(INotificationService));
+	// private initializeCodePlusServiceBridge(instantiationService: IInstantiationService): void {
+	// 	try {
+	// 		// Get required services from the instantiation service
+	// 		const modelService = instantiationService.invokeFunction(accessor => accessor.get(IModelService));
+	// 		const languageService = instantiationService.invokeFunction(accessor => accessor.get(ILanguageService));
+	// 		const codeEditorService = instantiationService.invokeFunction(accessor => accessor.get(ICodeEditorService));
+	// 		const commandService = instantiationService.invokeFunction(accessor => accessor.get(ICommandService));
+	// 		const contextKeyService = instantiationService.invokeFunction(accessor => accessor.get(IContextKeyService));
+	// 		const themeService = instantiationService.invokeFunction(accessor => accessor.get(IThemeService));
+	// 		const notificationService = instantiationService.invokeFunction(accessor => accessor.get(INotificationService));
 
-			// Get additional services needed for complex modals
-			const keybindingService = instantiationService.invokeFunction(accessor => accessor.get(IKeybindingService));
-			const contextMenuService = instantiationService.invokeFunction(accessor => accessor.get(IContextMenuService));
-			const configurationService = instantiationService.invokeFunction(accessor => accessor.get(IConfigurationService));
-			const viewDescriptorService = instantiationService.invokeFunction(accessor => accessor.get(IViewDescriptorService));
-			const hoverService = instantiationService.invokeFunction(accessor => accessor.get(IHoverService));
-			const openerService = instantiationService.invokeFunction(accessor => accessor.get(IOpenerService));
-			const menuService = instantiationService.invokeFunction(accessor => accessor.get(IMenuService));
-			const accessibilityService = instantiationService.invokeFunction(accessor => accessor.get(IAccessibilityService));
+	// 		// Get additional services needed for complex modals
+	// 		const keybindingService = instantiationService.invokeFunction(accessor => accessor.get(IKeybindingService));
+	// 		const contextMenuService = instantiationService.invokeFunction(accessor => accessor.get(IContextMenuService));
+	// 		const configurationService = instantiationService.invokeFunction(accessor => accessor.get(IConfigurationService));
+	// 		const viewDescriptorService = instantiationService.invokeFunction(accessor => accessor.get(IViewDescriptorService));
+	// 		const hoverService = instantiationService.invokeFunction(accessor => accessor.get(IHoverService));
+	// 		const openerService = instantiationService.invokeFunction(accessor => accessor.get(IOpenerService));
+	// 		const menuService = instantiationService.invokeFunction(accessor => accessor.get(IMenuService));
+	// 		const accessibilityService = instantiationService.invokeFunction(accessor => accessor.get(IAccessibilityService));
 
-			// Initialize the service bridge with all services
-			CodePlusServiceBridge.initialize(
-				instantiationService,
-				modelService,
-				languageService,
-				codeEditorService,
-				commandService,
-				contextKeyService,
-				themeService,
-				notificationService,
-				keybindingService,
-				contextMenuService,
-				configurationService,
-				viewDescriptorService,
-				hoverService,
-				openerService,
-				menuService,
-				accessibilityService
-			);
-		} catch (error) {
-			console.error('Failed to initialize Code+ service bridge:', error);
-		}
-	}
+	// 		// Initialize the service bridge with all services
+	// 		CodePlusServiceBridge.initialize(
+	// 			instantiationService,
+	// 			modelService,
+	// 			languageService,
+	// 			codeEditorService,
+	// 			commandService,
+	// 			contextKeyService,
+	// 			themeService,
+	// 			notificationService,
+	// 			keybindingService,
+	// 			contextMenuService,
+	// 			configurationService,
+	// 			viewDescriptorService,
+	// 			hoverService,
+	// 			openerService,
+	// 			menuService,
+	// 			accessibilityService
+	// 		);
+	// 	} catch (error) {
+	// 		console.error('Failed to initialize Code+ service bridge:', error);
+	// 	}
+	// }
 
 	protected override createWorkbenchLayout(): void {
 		// Skip workbench grid layout creation since we're replacing the UI with custom content

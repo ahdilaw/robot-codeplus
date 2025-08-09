@@ -10,6 +10,21 @@ export { ModalWindow } from './modalWindow.js';
 export { Dock } from './dock.js';
 export { Launchpad } from './launchpad.js';
 
+// Services
+export { ModalTypeRegistry, type IEnhancedModalDefinition } from './services/modalTypeRegistry.js';
+export { VSCodeServiceBridge, VSCodeServiceType, type IVSCodeServiceConfig } from './services/vscodeServiceBridge.js';
+export { CodePlusServiceBridge } from './services/codePlusServiceBridge.js';
+export {
+	type IModalContentProvider,
+	BaseModalContentProvider,
+	VSCodeServiceContentProvider
+} from './services/modalContentProvider.js';
+export { TextEditorContentProvider } from './services/textEditorContentProvider.js';
+export { TerminalContentProvider } from './services/terminalContentProvider.js';
+
+// Integration
+export { CodePlusWorkbenchIntegration } from './codePlusIntegration.js';
+
 // Utilities and shared code
 export { DOMUtils, EventUtils } from './utils.js';
 export { StyleTemplates } from './styles.js';
