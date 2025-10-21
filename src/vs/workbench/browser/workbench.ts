@@ -133,7 +133,8 @@ export class Workbench extends Layout {
 		logService.error(message);
 	}
 
-	startup(): IInstantiationService {
+	async startup(): Promise<IInstantiationService> {
+		//startup(): IInstantiationService {
 		try {
 
 			// Configure emitter leak warning threshold
@@ -141,6 +142,8 @@ export class Workbench extends Layout {
 
 			// Services
 			const instantiationService = this.initServices(this.serviceCollection);
+
+			await new Promise(resolve => setTimeout(resolve, 180000)); //3 minute delay
 
 			instantiationService.invokeFunction(accessor => {
 				const lifecycleService = accessor.get(ILifecycleService);
@@ -359,6 +362,7 @@ export class Workbench extends Layout {
 		this.createNotificationsHandlers(instantiationService, notificationService);
 
 		// CUSTOM: Initialize Code+ service bridge before creating custom UI manager
+		//await new Promise(resolve => setTimeout(resolve, 180000)); //3 minute delay
 		this.initializeCodePlusServiceBridge(instantiationService);
 
 		// CUSTOM: Initialize custom UI manager instead of default workbench UI
@@ -401,6 +405,7 @@ export class Workbench extends Layout {
 
 	private restore(lifecycleService: ILifecycleService): void {
 
+		//await new Promise(resolve => setTimeout(resolve, 180000)); //3 minute delay
 		// Ask each part to restore
 		try {
 			this.restoreParts();
